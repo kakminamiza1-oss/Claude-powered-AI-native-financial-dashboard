@@ -63,9 +63,10 @@ if EDGAR_MARKER not in src_all:
                if "Fundamentals fetched for" in "".join(c.get("source", [])) and c["cell_type"] == "code"), len(nb["cells"]))
     nb["cells"][at + 1:at + 1] = [md("## 3b. SEC EDGAR Fundamentals (official audited data)\n\n"
                                      "Pulls actual filed 10-K / 10-Q numbers from the free SEC EDGAR API.\n"), edgar_code]
-    src_all = "".join("".join(c.get("source", [])) for c in nb["cells"])
 
 # --- 2. FRED cell (after EDGAR) ---
+# Recompute src_all unconditionally so idempotency checks see the post-EDGAR state.
+src_all = "".join("".join(c.get("source", [])) for c in nb["cells"])
 if FRED_MARKER not in src_all:
     fred_md = md("## 6b. Macro Context (FRED — free)\n\n"
                  "Attaches U.S. macro indicators (Fed Funds Rate, CPI/PCE inflation, "
@@ -96,7 +97,9 @@ if FRED_MARKER not in src_all:
     at = next((i for i, c in enumerate(nb["cells"])
                if EDGAR_MARKER in "".join(c.get("source", []))), len(nb["cells"]))
     nb["cells"][at + 1:at + 1] = [fred_md, fred_code]
+    print("Injected FRED (and EDGAR if missing) into notebook 03.")
+else:
+    print("FRED cell already present — nothing to do.")
 
 with open(NB, "w", encoding="utf-8") as f:
     json.dump(nb, f, indent=1, ensure_ascii=False)
-print("Injected FRED (and EDGAR if missing) into notebook 03.")
