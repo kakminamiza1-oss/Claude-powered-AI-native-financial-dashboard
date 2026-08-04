@@ -6,9 +6,35 @@ A self-hosted personal finance system that connects to your real brokerage accou
 
 ---
 
-## What It Does
+## 🪙 Live Crypto Scanner Dashboard (Binance Perp)
 
-- Connects to Robinhood, SoFi, Stash, Acorns, Wealthfront, Fidelity (any Plaid-supported brokerage)
+โฟลเดอร์ `docs/` คือ **standalone dashboard** ที่ดึงข้อมูลสดจาก Binance API โดยตรง (ไม่ต้องเซิร์ฟเวอร์) — เปิดได้จากทุกอุปกรณ์
+
+### เปิดใช้งาน (GitHub Pages — ฟรี)
+1. ไปที่ **Settings → Pages** ของ repo นี้
+2. Source: `Deploy from a branch` → Branch: `main` → Folder: `/docs` → Save
+3. รอ ~1 นาที แล้วเปิด `https://<user>.github.io/<repo>/`
+
+หรือดู local ได้ทันที: เปิด `docs/index.html` ในเบราว์เซอร์
+
+### ฟีเจอร์
+- ตาราง BASE / DIP setups คำนวณสด (EMA/RSI/SuperTrend/CMF/OBV) — เหมือน `scanner_v2.py`
+- เพิ่มเหรียญเองได้ (input box) + ปุ่มสแกนสด
+- ข้อมูลจาก `fapi.binance.com` จริง (CORS เปิดให้)
+
+### Local stack (ไม่จำเป็นสำหรับ Pages แต่มีประโยชน์)
+โฟลเดอร์ `local-scanner/` มี:
+- `server.py` — control server (port 8765) คุมสแกน + เพิ่มเหรียญ + เปิด/ปิด cron
+- `crypto_cron_control.html` — หน้าแผงควบคุม (เพิ่มเหรียญ, ดูกราฟ, เปิด tunnel)
+- `tunnel.py` — Cloudflare Tunnel (เข้าเครื่องจากนอกบ้านได้)
+- `alert_hook.py` — แจ้งเตือน Telegram + Discord + เสียงในเครื่อง
+- `binance_perp_scan_cron_alert.py` — cron wrapper สแกน 4h แล้ว alert เมื่อเจอ setup ใหม่
+
+รัน local: `uv run python server.py` แล้วเปิด `http://127.0.0.1:8765`
+
+---
+
+## What It Does
 - Fetches unified holdings across all accounts — taxable, retirement, and cash
 - Enriches every position with technicals (RSI, MACD, Bollinger Bands), fundamentals, and news
 - Sends the full portfolio to Claude for structured analysis: health score, per-ticker recommendations, action items
