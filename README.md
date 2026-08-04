@@ -52,6 +52,80 @@ And locally:
 
 ---
 
+## Free Data Enrichments (no extra cost)
+
+On top of yfinance, the pipeline pulls **official, audited** data from the
+U.S. SEC's public EDGAR API — **100% free, no API key required** (only a
+polite `User-Agent`).
+
+### SEC EDGAR (`agent/sec_edgar.py`)
+
+Integrated into `agent/notebooks/03_data_enrichment.ipynb` (cell `3b`). For
+every held ticker it enriches the `fundamentals` dict with:
+
+- **Revenue / Net Income / EPS** — actual filed 10-K & 10-Q numbers
+- **Total Assets / Liabilities / Stockholders' Equity** — balance sheet
+- **Operating Cash Flow / Free Cash Flow** (OCF − capex)
+- **Derived:** debt-to-assets, net margin, ROE (all from filed figures)
+- **Filing dates** for the latest 10-K / 10-Q and recent 8-K items, so
+  Claude knows how fresh the data is
+
+Key fields are promoted to the top level of `fundamentals` so they flow
+straight into Claude's analysis prompt in notebook 04.
+
+**Configure** (in `agent/.env`):
+
+```bash
+SEC_USER_AGENT=your-email@example.com   # SEC asks for an identifying UA
+ENABLE_EDGAR=1                           # set to 0 to skip (yfinance only)
+```
+
+The enrichment is best-effort: if a ticker has no US CIK (funds, ADRs,
+foreign listings) or the SEC hiccups, the pipeline logs it and continues —
+it never breaks the run. Test it standalone with:
+
+```bash
+cd agent && uv run python sec_edgar.py AAPL NVDA TSLA
+```
+
+### FRED macro (`agent/fred_macro.py`)
+
+Attaches a U.S. macro snapshot to the enriched portfolio (notebook 03, cell
+`6b`) so Claude can frame each pick in the current economic backdrop:
+
+- **Fed Funds Rate**, **CPI YoY**, **Core PCE YoY** (Fed's preferred gauge)
+- **Unemployment Rate**, **10Y / 2Y Treasury Yields**, **10Y−2Y spread**
+  (negative = inverted curve / recession risk), **Nominal GDP**
+
+**Free** but needs a key — get one instantly (no approval) at
+https://fredaccount.stlouisfed.org/apisignup, then set in `agent/.env`:
+
+```bash
+FRED_API_KEY=your_free_key
+ENABLE_FRED=1            # set to 0 to skip
+```
+
+With no key the pipeline logs "skipped" and continues.
+
+### Crypto tracking (`agent/crypto_tracker.py`)
+
+The dashboard is equity-focused, but many portfolios also hold crypto. This
+pulls **live BTC/ETH/SOL (and any held coin) prices + 24h change** from the
+**free, no-key CoinGecko API** (notebook 03, cell `6c`). If you later connect
+your **CoinDesk MCP**, it can augment/replace this baseline with richer
+CoinDesk data — the field `enriched_portfolio["crypto"]` is the integration
+point.
+
+```bash
+ENABLE_CRYPTO=1          # set to 0 to skip
+```
+
+> **CoinDesk / monday.com MCP** — these are external MCP connections you
+> manage in your Claude/MCP client. They are not code in this repo. The
+> `crypto` block above is the in-pipeline hook where CoinDesk data lands;
+> `monday.com` action items can be triggered from Claude's `action_items`
+> output in notebook 04.
+
 ## Install
 
 ```bash
