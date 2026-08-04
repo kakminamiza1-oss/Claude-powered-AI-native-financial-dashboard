@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Crypto Scanner — Live Dashboard (GitHub Pages)</title>
+<style>
+  :root{--bg:#0b0e14;--card:#111620;--fg:#e6e6e6;--mut:#8b93a7;--grn:#22c55e;--red:#ef4444;--blu:#38bdf8;--bd:#1b2230}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--fg);padding:20px}
+  .wrap{max-width:1280px;margin:0 auto}
+  h1{font-size:22px;background:linear-gradient(90deg,#22c55e,#38bdf8);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+  .sub{color:var(--mut);font-size:13px;margin:6px 0 16px}
+  .bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
+  input,select,button{background:#21262d;color:var(--fg);border:1px solid var(--bd);padding:8px 11px;border-radius:6px;font-size:13px}
+  button{cursor:pointer;background:#238636;color:#fff;border:none}
+  button:hover{filter:brightness(1.1)}
+  .btn-tun{background:linear-gradient(90deg,#38bdf8,#0284c7)}
+  .card{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:16px;margin-bottom:14px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{background:#0f141d;color:var(--mut);font-size:11px;text-transform:uppercase;padding:10px 8px;text-align:left;position:sticky;top:0}
+  td{padding:10px 8px;border-top:1px solid var(--bd)}
+  .sym{font-weight:700}.q{color:#5b6478;font-size:10px;margin-left:2px}
+  .num{font-variant-numeric:tabular-nums;text-align:right;font-weight:600}
+  .sl{color:var(--red)}.tp{color:var(--grn)}
+  .up{color:var(--grn)}.dn{color:var(--red)}.bull{color:var(--grn)}.bear{color:var(--red)}
+  .rr{display:block;font-size:9px;color:#5b6478;font-weight:400}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+  .chip{background:#0d1117;border:1px solid var(--bd);border-radius:20px;padding:5px 12px;font-size:12px}
+  .chip b{color:var(--blu)}
+  .status{font-size:12px;color:var(--mut);margin-top:8px}
+  .note{font-size:11px;color:var(--mut);line-height:1.6;margin-top:10px}
+  h2{font-size:17px;margin:18px 0 10px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media(max-width:800px){.grid2{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🪙 Binance Perp Scanner — Live</h1>
+  <div class="sub">ดึงข้อมูลสดจาก Binance API โดยตรง · ไม่ต้องเซิร์ฟเวอร์ · โฮสต์ฟรีบน GitHub Pages</div>
+
+  <div class="bar">
+    <input id="sym" value="BTCUSDT" size="10" title="คู่เทรด">
+    <button onclick="addCoin()">+ เพิ่มเหรียญ</button>
+    <button class="btn-tun" onclick="scanAll()">🔄 สแกนทั้งหมด</button>
+    <span id="status" class="status"></span>
+  </div>
+  <div class="chips" id="chips"></div>
+
+  <div class="card">
+    <h2>🟢 BASE setups (กำลังสะสม — OBV/CMF/EMA)</h2>
+    <div id="baseRes" class="status">กด "สแกนทั้งหมด" หรือเพิ่มเหรียญ</div>
+  </div>
+  <div class="card">
+    <h2>🔵 DIP setups (pullback to support — RSI/SuperTrend)</h2>
+    <div id="dipRes" class="status">—</div>
+  </div>
+
+  <div class="note">
+    วิธีใช้: พิมพ์ symbol (เช่น AAVE, PEPE, SOLUSDT) กดเพิ่ม แล้วกดสแกน<br>
+    Indicator: EMA(50), RSI(14), SuperTrend(10,3) คำนวณในเบราว์เซอร์แบบเดียวกับ scanner_v2<br>
+    ข้อมูลจาก <code>fapi.binance.com</code> จริง · CORS เปิดให้ดึงได้จากหน้าเว็บนี้
+  </div>
+</div>
+
+<script>
+const BASE="https://fapi.binance.com";
+let WATCH=["BTCUSDT","ETHUSDT","SOLUSDT","BNBUSDT","AAVEUSDT","DOTUSDT","NEARUSDT","1000SHIBUSDT","WLDUSDT"];
+
+// ---------- indicators (JS port of scanner_v2) ----------
+function ema(v,n){if(v.length<n)return null;let k=2/(n+1),e=v[0];for(let i=1;i<v.length;i++)e=v[i]*k+e*(1-k);return e;}
+function rsi(c,n=14){if(c.length<n+1)return null;let g=0,l=0;for(let i=1;i<=n;i++){const d=c[i]-c[i-1];if(d>0)g+=d;else l+=-d;}return l===0?100:100-100/(1+g/l);}
+function supertrend(h,l,c,p=10,m=3){if(c.length<p+1)return 0;const trs=[],atrN=p;let tr=[];for(let i=-p;i<0;i++){tr.push(Math.max(h[i]-l[i],Math.abs(h[i]-c[i-1]),Math.abs(l[i]-c[i-1])));}const atr=tr.reduce((a,b)=>a+b,0)/p;let hl2=[],up=[],dn=[];for(let i=-p;i<0;i++){hl2.push((h[i]+l[i])/2);}for(let i=0;i<hl2.length;i++){up.push(hl2[i]+m*atr);dn.push(hl2[i]-m*atr);}let fut=[],flt=[];for(let i=0;i<hl2.length;i++){if(i===0){fut[i]=up[i];flt[i]=dn[i];}else{const ci=c[-p+i];fut[i]=ci>fut[i-1]?Math.min(up[i],fut[i-1]):up[i];flt[i]=ci<flt[i-1]?Math.max(dn[i],flt[i-1]):dn[i];}}const close=c[c.length-1];if(close>fut[fut.length-1])return 1;if(close<flt[flt.length-1])return -1;return fut[fut.length-1]>=flt[flt.length-1]?1:-1;}
+function cmf(c,h,l,v,n=20){if(c.length<n+1)return 0;let mfv=0,vol=0;for(let i=-n;i<0;i++){const rng=h[i]-l[i];mfv+=(rng===0?0:((c[i]-l[i])-(h[i]-c[i]))/rng*v[i]);vol+=v[i];}return vol?mfv/vol:0;}
+function obvSlope(c,v,look=30){if(c.length<look+2)return false;let obv=0,series=[0];for(let i=1;i<c.length;i++){if(c[i]>c[i-1])obv+=v[i];else if(c[i]<c[i-1])obv-=v[i];series.push(obv);}return series[series.length-1]>series[series.length-look];}
+
+// ---------- binance fetch ----------
+async function klines(sym,interval="4h",limit=200){const u=`${BASE}/fapi/v1/klines?symbol=${sym}&interval=${interval}&limit=${limit}`;const r=await fetch(u);if(!r.ok)throw new Error(sym+" "+r.status);const raw=await r.json();return raw.map(r=>({o:+r[1],h:+r[2],l:+r[3],c:+r[4],v:+r[5]}));}
+async function ticker24(){const r=await fetch(`${BASE}/fapi/v1/ticker/24hr`);const j=await r.json();const m={};for(const t of j)m[t.symbol]=t;return m;}
+
+// ---------- scan logic ----------
+function baseScan(k){
+  const c=k.map(x=>x.c),h=k.map(x=>x.h),l=k.map(x=>x.l),v=k.map(x=>x.v);
+  if(c.length<120)return null;const p=c[c.length-1];
+  const hi=Math.max(...h.slice(-30)),lo=Math.min(...l.slice(-30)),rng=(hi-lo)/((hi+lo)/2)*100;
+  if(rng>18)return null;const tight=rng<12;const obvUp=obvSlope(c,v);const cmfv=cmf(c,h,l,v);
+  const e50=ema(c,50),above=p>e50;const score=[tight,obvUp,cmfv>0,above].filter(Boolean).length;
+  if(score<3)return null;
+  const absRng=hi-lo,entry=Math.min(p,lo+absRng*0.25),sl=lo*0.985,tp1=hi*0.998,tp2=entry+absRng,risk=entry-sl;
+  if(risk<=0)return null;
+  const rr1=(tp1-entry)/risk,rr2=(tp2-entry)/risk;
+  return {price:p,score,cmf:cmfv,obv:obvUp?"up":"dn",entry,sl,tp1,tp2,rr1,rr2};
+}
+function dipScan(k){
+  const c=k.map(x=>x.c),h=k.map(x=>x.h),l=k.map(x=>x.l);
+  if(c.length<60)return null;const p=c[c.length-1],e50=ema(c,50),r=rsi(c,14);
+  if(e50==null||r==null)return null;const hi=Math.max(...h.slice(-30)),lo=Math.min(...l.slice(-30)),pb=(hi-p)/hi*100;
+  const st=supertrend(h,l,c);const score=[p>e50,e50*0.97<=p&&p<=e50*1.03,38<=r&&r<=62,3<=pb&&pb<=25,st===1].filter(Boolean).length;
+  if(score<4)return null;const entry=Math.min(p,e50*1.002),sl=Math.min(lo*0.997,e50*0.97),risk=entry-sl;
+  if(risk<=0||risk/p>0.10)return null;let tp1=Math.min(hi*0.995,entry*1.15);let tp2=Math.min(entry+2.5*risk,entry*1.30);
+  const rr1=(tp1-entry)/risk,rr2=(tp2-entry)/risk;
+  return {price:p,rsi:r,st:st===1?"bull":"bear",entry,sl,tp1,tp2,rr1,rr2,score};
+}
+
+// ---------- render ----------
+function rowHTML(sym,d,kind){
+  const pct=(d.tp1/d.entry-1)*100;
+  const pct2=(d.tp2/d.entry-1)*100;
+  if(kind==="base"){
+    return `<tr><td class="sym">${sym.replace('USDT','')}<span class="q">USDT</span></td>
+      <td class="num">${d.price}</td><td class="num">${d.score}</td>
+      <td class="num ${d.obv}">${d.obv}</td><td class="num ${d.cmf>0?'up':'dn'}">${d.cmf.toFixed(3)}</td>
+      <td class="num sl">${d.sl}</td><td class="num tp">${d.tp1}<span class="rr">+${pct.toFixed(1)}%</span></td>
+      <td class="num tp">${d.tp2}<span class="rr">+${pct2.toFixed(1)}%</span></td>
+      <td class="num" style="text-align:center">${d.rr1.toFixed(2)}/${d.rr2.toFixed(2)}</td></tr>`;
+  }else{
+    return `<tr><td class="sym">${sym.replace('USDT','')}<span class="q">USDT</span></td>
+      <td class="num">${d.price}</td><td class="num">${d.score}</td><td class="num">RSI ${d.rsi.toFixed(1)}</td>
+      <td class="num ${d.st}">${d.st}</td><td class="num sl">${d.sl}</td>
+      <td class="num tp">${d.tp1}<span class="rr">+${pct.toFixed(1)}%</span></td>
+      <td class="num tp">${d.tp2}<span class="rr">+${pct2.toFixed(1)}%</span></td>
+      <td class="num" style="text-align:center">${d.rr1.toFixed(2)}/${d.rr2.toFixed(2)}</td></tr>`;
+  }
+}
+
+async function scanAll(){
+  setStatus("กำลังดึงข้อมูล...");
+  const baseOut=[],dipOut=[];
+  for(const sym of WATCH){
+    try{
+      const k4=await klines(sym,"4h",200);
+      const b=baseScan(k4);if(b)baseOut.push([sym,b]);
+      const d=dipScan(k4);if(d)dipOut.push([sym,d]);
+    }catch(e){/* skip */}
+  }
+  baseOut.sort((a,b)=>b[1].rr1-a[1].rr1);
+  dipOut.sort((a,b)=>b[1].rr1-a[1].rr1);
+  document.getElementById("baseRes").innerHTML = baseOut.length?`<table><thead><tr><th>เหรียญ</th><th>ราคา</th><th>Score</th><th>OBV</th><th>CMF</th><th>SL</th><th>TP1</th><th>TP2</th><th>R:R</th></tr></thead><tbody>${baseOut.map(([s,d])=>rowHTML(s,d,"base")).join("")}</tbody></table>`:"ไม่มี BASE setup";
+  document.getElementById("dipRes").innerHTML = dipOut.length?`<table><thead><tr><th>เหรียญ</th><th>ราคา</th><th>Score</th><th>RSI</th><th>ST</th><th>SL</th><th>TP1</th><th>TP2</th><th>R:R</th></tr></thead><tbody>${dipOut.map(([s,d])=>rowHTML(s,d,"dip")).join("")}</tbody></table>`:"ไม่มี DIP setup";
+  setStatus(`สแกนเสร็จ · BASE ${baseOut.length} · DIP ${dipOut.length} · ${new Date().toLocaleString("th-TH")}`);
+}
+
+function addCoin(){
+  let s=document.getElementById("sym").value.trim().toUpperCase();
+  if(!s)return;if(!s.endsWith("USDT"))s+="USDT";
+  if(!WATCH.includes(s))WATCH.push(s);
+  renderChips();document.getElementById("sym").value="";scanAll();
+}
+function renderChips(){
+  document.getElementById("chips").innerHTML=WATCH.map(s=>`<span class="chip"><b>${s.replace('USDT','')}</b></span>`).join("");
+}
+function setStatus(t){document.getElementById("status").textContent=t;}
+renderChips();
+</script>
+</body>
+</html>

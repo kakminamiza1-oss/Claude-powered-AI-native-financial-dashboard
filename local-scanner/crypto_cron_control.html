@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Crypto Cron Control — 4h Scanner</title>
+<style>
+  :root{--bg:#0b0e14;--card:#111620;--fg:#e6e6e6;--mut:#8b93a7;--grn:#22c55e;--red:#ef4444;--blu:#38bdf8;--bd:#1b2230}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--fg);padding:24px}
+  .wrap{max-width:820px;margin:0 auto}
+  h1{font-size:22px;background:linear-gradient(90deg,#22c55e,#38bdf8);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+  .sub{color:var(--mut);font-size:13px;margin:6px 0 20px}
+  .card{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:18px;margin-bottom:14px}
+  .lbl{font-size:14px;font-weight:600}
+  .lbl small{display:block;color:var(--mut);font-size:11px;margin-top:3px;font-weight:400}
+  .row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--bd)}
+  .row:first-child{border-top:none}
+  button{cursor:pointer;border:none;border-radius:10px;padding:10px 16px;font-size:13px;font-weight:700;transition:.15s}
+  .btn-scan{background:linear-gradient(90deg,#38bdf8,#0284c7);color:#fff;width:100%}
+  .btn-scan:hover{filter:brightness(1.1)}
+  .btn-scan:disabled{opacity:.5;cursor:wait}
+  .btn-tun{background:linear-gradient(90deg,#a855f7,#7c3aed);color:#fff}
+  .btn-stop{background:#3a2030;color:#fca5a5;border:1px solid #7f1d1d}
+  .btn-add{background:var(--grn);color:#04140a}
+  input[type=text]{background:#0d1117;color:var(--fg);border:1px solid var(--bd);border-radius:8px;padding:9px 11px;font-size:13px;width:180px}
+  .switch{position:relative;width:64px;height:34px;background:#2a3444;border-radius:20px;cursor:pointer;transition:.2s}
+  .switch.on{background:var(--grn)}
+  .knob{position:absolute;top:3px;left:3px;width:28px;height:28px;background:#fff;border-radius:50%;transition:.2s}
+  .switch.on .knob{left:33px}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+  .chip{background:#0d1117;border:1px solid var(--bd);border-radius:20px;padding:5px 12px;font-size:12px;display:flex;align-items:center;gap:6px}
+  .chip b{color:var(--blu)}
+  .chip .x{cursor:pointer;color:var(--red);font-weight:700}
+  .status{font-size:12px;color:var(--mut);margin-top:8px}
+  .result{background:#0d1117;border:1px solid var(--bd);border-radius:10px;padding:14px;margin-top:12px;font-family:monospace;font-size:13px;white-space:pre-wrap;color:#cbd5e1;max-height:340px;overflow:auto;display:none}
+  .tun-url{color:var(--blu);font-size:13px;word-break:break-all}
+  a.dl{color:var(--blu);text-decoration:none;font-size:12px}
+  .note{font-size:11px;color:var(--mut);line-height:1.6;margin-top:10px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>⏰ Crypto Cron Control</h1>
+  <div class="sub">Binance Perp Scanner v2 · เช็ค vs แผนเข้าเทรด · ทุก 4 ชม.</div>
+
+  <!-- A: Tunnel control -->
+  <div class="card">
+    <div class="lbl">🌐 เปิดลิงก์นอก (Cloudflare Tunnel)<small>สร้าง URL เข้าเครื่องได้จากมือถือ/อื่น โดยไม่ต้อง port forward</small></div>
+    <div class="row">
+      <div>
+        <button class="btn-tun" onclick="tunStart()">▶ เปิด Tunnel (ชั่วคราว)</button>
+        <button class="btn-tun" onclick="tunStartNamed()" style="background:linear-gradient(90deg,#22c55e,#15803d)">🔒 Tunnel คงที่</button>
+        <button class="btn-stop" onclick="tunStop()">■ ปิด Tunnel</button>
+      </div>
+      <div id="tunState" class="status">สถานะ: ปิด</div>
+    </div>
+    <div id="tunUrl" class="tun-url"></div>
+    <div class="note">โหมด quick tunnel (ไม่ต้อง login) — URL จะเปลี่ยนทุกครั้งเปิดใหม่ ถ้าต้องการลิงก์คงที่ใช้ <code>cloudflared tunnel login</code> แล้วตั้ง named</div>
+  </div>
+
+  <!-- B: Watchlist + add coin -->
+  <div class="card">
+    <div class="lbl">🪙 Watchlist (เพิ่มเหรียญเอง)<small>พิมพ์ symbol แล้วกด เพิ่ม — บันทึกลง watchlist.json</small></div>
+    <div class="row">
+      <input type="text" id="symInput" placeholder="เช่น AAVE, PEPE, SOLUSDT" onkeydown="if(event.key==='Enter')addCoin()">
+      <button class="btn-add" onclick="addCoin()">+ เพิ่มเหรียญ</button>
+    </div>
+    <div class="chips" id="chips"></div>
+    <div class="note">กดชื่อเหรียญเพื่อเปิดกราฟวิเคราะห์ (เรียก /analyze)</div>
+  </div>
+
+  <!-- Scan now -->
+  <div class="card">
+    <div class="lbl">🔄 สแกนเลย (Request now)<small>รันสแกนสดทันที ผ่าน local server (port 8765)</small></div>
+    <button class="btn-scan" id="scanBtn" onclick="runScan()">▶ สแกนเดี๋ยวนี้</button>
+    <div class="status" id="st-scan">พร้อม</div>
+    <div class="result" id="res"></div>
+  </div>
+
+  <!-- Cron toggle -->
+  <div class="card">
+    <div class="row">
+      <div class="lbl">⚙️ เปิด/ปิด Cron 4h<small>สวิตช์นี้เขียนลง cron_state.json จริง (cron อ่านแล้วข้ามถ้า off)</small></div>
+      <div class="switch" id="sw" onclick="toggle()"><div class="knob"></div></div>
+    </div>
+    <div class="status" id="st-sw">สถานะ: กำลังโหลด...</div>
+    <div class="note">เปิดจริง: cron อ่าน cron_state.json enabled=true · ปิด: false<br>หรือพิมพ์ใน Hermes chat: <b>"เปิด cron"</b> / <b>"ปิด cron"</b></div>
+  </div>
+
+  <!-- Files -->
+  <div class="card">
+    <div class="lbl">📂 ไฟล์ที่เกี่ยวข้อง</div>
+    <div class="row"><span class="lbl">Dashboard สด</span><a class="dl" href="scanner_v2_dashboard_live.html">เปิด</a></div>
+    <div class="row"><span class="lbl">Checkpoint (raw)</span><a class="dl" href="scanner_v2_checkpoint.json">เปิด</a></div>
+    <div class="row"><span class="lbl">ปิด Server ทั้งหมด</span><button class="btn-stop" onclick="shutdown()">■ Shutdown</button></div>
+  </div>
+</div>
+
+<script>
+const API='http://127.0.0.1:8765';
+async function runScan(){
+  const btn=document.getElementById('scanBtn');
+  btn.disabled=true; document.getElementById('st-scan').textContent='กำลังรันสแกน...';
+  try{
+    const r=await fetch(API+'/scan',{method:'POST'});
+    const j=await r.json();
+    const res=document.getElementById('res');
+    res.style.display='block';
+    res.textContent=j.ok?j.text:('ERROR: '+(j.error||'unknown'));
+    document.getElementById('st-scan').textContent='สแกนเสร็จ';
+  }catch(e){
+    document.getElementById('st-scan').textContent='เชื่อม server ไม่ได้ — รัน start_server.bat ก่อน';
+  }finally{ btn.disabled=false; }
+}
+async function loadState(){
+  try{
+    const r=await fetch(API+'/state'); const j=await r.json();
+    const sw=document.getElementById('sw');
+    sw.classList.toggle('on', j.enabled);
+    document.getElementById('st-sw').textContent='สถานะ: '+(j.enabled?'เปิด':'ปิด');
+  }catch(e){ document.getElementById('st-sw').textContent='เชื่อม server ไม่ได้'; }
+}
+async function toggle(){
+  try{
+    const r=await fetch(API+'/toggle',{method:'POST'}); const j=await r.json();
+    const sw=document.getElementById('sw'); sw.classList.toggle('on', j.enabled);
+    document.getElementById('st-sw').textContent='สถานะ: '+(j.enabled?'เปิด':'ปิด');
+  }catch(e){ alert('toggle ไม่สำเร็จ'); }
+}
+async function loadWatch(){
+  try{
+    const r=await fetch(API+'/watchlist'); const j=await r.json();
+    const c=document.getElementById('chips'); c.innerHTML='';
+    (j.watchlist||[]).forEach(s=>{
+      const el=document.createElement('div'); el.className='chip';
+      el.innerHTML=`<b onclick="analyze('${s}')">${s.replace('USDT','')}</b><span class="x" onclick="removeCoin('${s}')">✕</span>`;
+      c.appendChild(el);
+    });
+  }catch(e){}
+}
+async function addCoin(){
+  let s=document.getElementById('symInput').value.trim().toUpperCase();
+  if(!s) return;
+  if(!s.endsWith('USDT') && !s.includes('USDT')) s=s+'USDT';
+  try{
+    const r=await fetch(API+'/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbol:s})});
+    const j=await r.json();
+    if(j.ok){ document.getElementById('symInput').value=''; loadWatch(); }
+    else alert(j.error||'เพิ่มไม่ได้');
+  }catch(e){ alert('เชื่อม server ไม่ได้'); }
+}
+async function removeCoin(s){
+  try{
+    await fetch(API+'/remove',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbol:s})});
+    loadWatch();
+  }catch(e){}
+}
+async function analyze(s){
+  try{
+    const r=await fetch(API+'/analyze?sym='+s); const j=await r.json();
+    const res=document.getElementById('res'); res.style.display='block';
+    res.textContent=JSON.stringify(j,null,2);
+    document.getElementById('st-scan').textContent='วิเคราะห์ '+s;
+    window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'});
+  }catch(e){ alert('analyze ไม่สำเร็จ'); }
+}
+async function tunStart(){
+  document.getElementById('tunState').textContent='กำลังเปิด tunnel...';
+  try{
+    const r=await fetch(API+'/tunnel/start',{method:'POST'}); const j=await r.json();
+    if(j.ok){
+      document.getElementById('tunState').textContent='สถานะ: เปิด ✅';
+      document.getElementById('tunUrl').innerHTML='🔗 <a class="dl" href="'+j.url+'" target="_blank">'+j.url+'</a>';
+    } else {
+      document.getElementById('tunState').textContent='เปิดไม่ได้: '+j.msg;
+    }
+  }catch(e){ document.getElementById('tunState').textContent='เชื่อม server ไม่ได้'; }
+}
+async function tunStartNamed(){
+  if(!confirm('Tunnel คงที่ ต้องเคยรัน `cloudflared tunnel login` ครั้งเดียวใน terminal ก่อน\n\nกด OK ถ้าเคย login แล้ว (หรือยอมรับข้ามได้)')) return;
+  document.getElementById('tunState').textContent='กำลังสร้าง named tunnel...';
+  try{
+    const r=await fetch(API+'/tunnel/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:'named',name:'hermesdash'})});
+    const j=await r.json();
+    if(j.ok){
+      document.getElementById('tunState').textContent='สถานะ: เปิดคงที่ ✅';
+      document.getElementById('tunUrl').innerHTML='🔗 <a class="dl" href="'+j.url+'" target="_blank">'+j.url+'</a>';
+    } else {
+      document.getElementById('tunState').textContent='สร้างไม่ได้: '+j.msg;
+    }
+  }catch(e){ document.getElementById('tunState').textContent='เชื่อม server ไม่ได้'; }
+}
+async function tunStop(){
+  try{
+    await fetch(API+'/tunnel/stop',{method:'POST'});
+    document.getElementById('tunState').textContent='สถานะ: ปิด';
+    document.getElementById('tunUrl').textContent='';
+  }catch(e){}
+}
+async function tunStatus(){
+  try{
+    const r=await fetch(API+'/tunnel/status'); const j=await r.json();
+    if(j.url){ document.getElementById('tunState').textContent='สถานะ: เปิด ✅';
+      document.getElementById('tunUrl').innerHTML='🔗 <a class="dl" href="'+j.url+'" target="_blank">'+j.url+'</a>'; }
+  }catch(e){}
+}
+async function shutdown(){
+  if(!confirm('ปิด Server + Tunnel ทั้งหมด?')) return;
+  try{ await fetch(API+'/shutdown',{method:'POST'}); alert('ปิดแล้ว'); }
+  catch(e){}
+}
+loadState(); loadWatch(); tunStatus();
+</script>
+</body>
+</html>
