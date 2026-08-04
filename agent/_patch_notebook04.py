@@ -23,8 +23,8 @@ for c in nb["cells"]:
         continue
     src = "".join(c["source"])
     if "SYSTEM_PROMPT" in src and "Analysis Framework" in src:
-        # a) Add macro + edgar to the data description block
-        if "macro (FRED)" not in src:
+        # Idempotency guard uses a token that actually appears after injection.
+        if "Audited SEC fundamentals" not in src:
             c["source"] = [
                 line.replace(
                     '- "enrichment": per-ticker object with technicals, fundamentals, performance, and news\n',
